@@ -17,4 +17,10 @@
     <td>Data 8</td>
     <td>Data 9</td>
   </tr>
+ <tr>
+    <td><strong>Header 3</strong></td>
+    <td>Data 7</td>
+    <td>Data 8</td>
+    <td>Data 9</td>
+  </tr>
 </table>
