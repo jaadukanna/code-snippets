@@ -1,3 +1,5 @@
+<html>
+<head>
 <style>
   table {
     border-collapse: collapse;
@@ -10,7 +12,7 @@
     background-color: transparent; /* Remove alternating row color */
   }
 </style>
-
+</head>
 <table>
   <tr>
     <td><strong>Header 1</strong></td>
