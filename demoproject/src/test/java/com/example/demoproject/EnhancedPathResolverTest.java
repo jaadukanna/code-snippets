@@ -15,11 +15,15 @@ void testNestedArrayFilteringWithApplicationStructure() {
     Map<String, Object> data = Map.of(
         "application", Map.of(
             "id", "APP-2025-001",
-            "applicants", List.of(
+            "applicant", List.of(
                 Map.of(
                     "id", "A1",
-                    "relationship", "primary",
-                    "firstName", "John",
+                    "demographic", Map.of(
+                        "firstName", "John",
+                        "lastName", "Doe",
+                        "ssn", "123-45-6789",
+                        "relationshipType", "APPLICANT"
+                    ),
                     "addresses", List.of(
                         Map.of("type", "home", "street", "123 Main St", "city", "NYC", "zip", "10001"),
                         Map.of("type", "billing", "street", "456 Business Ave", "city", "NYC", "zip", "10002"),
@@ -28,8 +32,12 @@ void testNestedArrayFilteringWithApplicationStructure() {
                 ),
                 Map.of(
                     "id", "A2",
-                    "relationship", "dependent",
-                    "firstName", "Alice",
+                        "demographic", Map.of(
+                        "firstName", "Baby",
+                        "lastName", "Doe",
+                        "ssn", "123-45-6790",
+                        "relationshipType", "CHILD"
+                    ),
                     "addresses", List.of(
                         Map.of("type", "home", "street", "123 Main St", "city", "NYC", "zip", "10001")
                     )
@@ -40,20 +48,20 @@ void testNestedArrayFilteringWithApplicationStructure() {
     
     // Test nested array filtering
     Object primaryBillingStreet = EnhancedPathResolver.read(data, 
-        "application.applicants[relationship='primary'].addresses[type='billing'].street");
+        "application.applicant[demographic.relationshipType='APPLICANT'].addresses[type='billing'].street");
     assertEquals("456 Business Ave", primaryBillingStreet);
     
    Object allHomeStreets = EnhancedPathResolver.read(data, 
-        "application.applicants.addresses[type='home'].street");
+        "application.applicant.addresses[type='home'].street");
     assertEquals(List.of("123 Main St", "123 Main St"), allHomeStreets);
     
     Object primaryHomeZip = EnhancedPathResolver.read(data, 
-        "application.applicants[relationship='primary'].addresses[type='home'].zip");
+        "application.applicant[demographic.relationshipType='CHILD'].addresses[type='home'].zip");
     assertEquals("10001", primaryHomeZip);
     
     // Test filtering by multiple conditions
     Object nycMailingAddresses = EnhancedPathResolver.read(data, 
-        "application.applicants.addresses[city='NYC' and zip='10001' and type='mailing'].street");
+        "application.applicant.addresses[city='NYC' and zip='10001' and type='mailing'].street");
     assertEquals("123 Main St", nycMailingAddresses);
 }
 
@@ -121,5 +129,45 @@ void testNestedArrayFiltering() {
     Object workStreet = EnhancedPathResolver.read(data, "applicants.addresses[type='work'].street");
     assertNull(workStreet);
 }
+
+    @Test
+    void testOperatorComparisonsAndEdgeCases() {
+        Map<String, Object> data = Map.of(
+            "products", List.of(
+                Map.of("id", "p1", "price", 50, "name", "expensive"),
+                Map.of("id", "p2", "price", 10, "name", "cheap"),
+                Map.of("id", "p3", "price", 20, "name", "mid")
+            ),
+            "users", List.of(
+                Map.of("name", "Alice", "role", "admin"),
+                Map.of("name", "Bob", "role", "user"),
+                Map.of("name", "Carol", "role", "guest")
+            )
+        );
+
+        Object expensive = EnhancedPathResolver.read(data, "products[price>20].name");
+        assertEquals("expensive", expensive);
+
+        Object cheap = EnhancedPathResolver.read(data, "products[price<20].name");
+        assertEquals("cheap", cheap);
+
+        Object atLeast20 = EnhancedPathResolver.read(data, "products[price>=20].name");
+        assertEquals(List.of("expensive", "mid"), atLeast20);
+
+        Object not20 = EnhancedPathResolver.read(data, "products[price!=20].name");
+        assertEquals(List.of("expensive", "cheap"), not20);
+
+        // String not-equals operator
+        Object nonAdmins = EnhancedPathResolver.read(data, "users[role!='admin'].name");
+        assertEquals(List.of("Bob", "Carol"), nonAdmins);
+
+        // Missing field in predicate should safely return null
+        Object missing = EnhancedPathResolver.read(data, "products[discount>0].name");
+        assertNull(missing);
+
+        // Invalid numeric comparison value should not throw and should not match
+        Object invalidCompare = EnhancedPathResolver.read(data, "products[price>notanumber].name");
+        assertNull(invalidCompare);
+    }
 
 }

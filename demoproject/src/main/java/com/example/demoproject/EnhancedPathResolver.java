@@ -66,41 +66,95 @@ public class EnhancedPathResolver {
         if (!(node instanceof Map)) return false;
         Map<?, ?> m = (Map<?, ?>) node;
         for (Condition c : conditions) {
-            Object actual = m.get(c.key);
-            if (!matchesValue(actual, c.expected)) return false;
+            Object actual = getValueByPath(m, c.key);
+            if (!matchesWithOperator(actual, c.operator, c.expected)) return false;
         }
         return true;
     }
 
-    private static boolean matchesValue(Object actual, Object expected) {
-        if (expected == null) return actual == null;
+    private static Object getValueByPath(Object node, String keyPath) {
+        if (node == null || keyPath == null || keyPath.isEmpty()) return null;
+        String[] parts = keyPath.split("\\.");
+        Object cur = node;
+        for (String p : parts) {
+            if (cur == null) return null;
+            if (cur instanceof Map) {
+                cur = ((Map<?, ?>) cur).get(p);
+            } else if (cur instanceof List) {
+                // if it's a list, we can't resolve a nested property directly;
+                // try to find the property on any element and return the first match
+                Object found = null;
+                for (Object item : (List<?>) cur) {
+                    if (item instanceof Map) {
+                        Object v = ((Map<?, ?>) item).get(p);
+                        if (v != null) { found = v; break; }
+                    }
+                }
+                cur = found;
+            } else {
+                // primitive encountered before finishing path
+                return null;
+            }
+        }
+        return cur;
+    }
+
+    private static boolean matchesWithOperator(Object actual, String operator, Object expected) {
+        if (operator == null || operator.isEmpty()) operator = "=";
+        if (expected == null) {
+            boolean eq = actual == null;
+            return "!=".equals(operator) ? !eq : eq;
+        }
+
+        // Boolean handling
         if (expected instanceof Boolean) {
             Boolean exp = (Boolean) expected;
-            if (actual instanceof Boolean) return exp.equals(actual);
-            String s = stringValue(actual);
-            return s != null && Boolean.valueOf(s).equals(exp);
+            Boolean act = null;
+            if (actual instanceof Boolean) act = (Boolean) actual;
+            else {
+                String s = stringValue(actual);
+                if (s != null) act = Boolean.valueOf(s);
+            }
+            if (act == null) return false;
+            return "!=".equals(operator) ? !exp.equals(act) : exp.equals(act);
         }
+
+        // Numeric handling
         if (expected instanceof Number) {
-            if (actual instanceof Number) {
-                double a = ((Number) actual).doubleValue();
-                double b = ((Number) expected).doubleValue();
-                return Double.compare(a, b) == 0;
-            }
-            String s = stringValue(actual);
-            if (s == null) return false;
-            try {
-                if (expected instanceof Long) {
-                    return Long.parseLong(s) == ((Number) expected).longValue();
-                } else {
-                    return Double.parseDouble(s) == ((Number) expected).doubleValue();
+            Double expD = ((Number) expected).doubleValue();
+            Double actD = null;
+            if (actual instanceof Number) actD = ((Number) actual).doubleValue();
+            else {
+                String s = stringValue(actual);
+                if (s != null) {
+                    try { actD = Double.parseDouble(s); } catch (NumberFormatException e) { return false; }
                 }
-            } catch (NumberFormatException ex) {
-                return false;
+            }
+            if (actD == null) return false;
+            switch (operator) {
+                case "!":
+                case "!=": return Double.compare(actD, expD) != 0;
+                case ">": return Double.compare(actD, expD) > 0;
+                case "<": return Double.compare(actD, expD) < 0;
+                case ">=": return Double.compare(actD, expD) >= 0;
+                case "<=": return Double.compare(actD, expD) <= 0;
+                default: return Double.compare(actD, expD) == 0;
             }
         }
-        // fallback to string comparison
+
+        // String/fallback handling
         String a = stringValue(actual);
-        return a != null && a.equals(String.valueOf(expected));
+        String e = String.valueOf(expected);
+        if (a == null) return false;
+        switch (operator) {
+            case "!":
+            case "!=": return !a.equals(e);
+            case ">": return a.compareTo(e) > 0;
+            case "<": return a.compareTo(e) < 0;
+            case ">=": return a.compareTo(e) >= 0;
+            case "<=": return a.compareTo(e) <= 0;
+            default: return a.equals(e);
+        }
     }
 
     private static String stringValue(Object o) {
@@ -111,17 +165,29 @@ public class EnhancedPathResolver {
         List<Condition> out = new ArrayList<>();
         String[] parts = predicate.split("\\s+and\\s+");
         for (String p : parts) {
-            String[] kv = p.split("=", 2);
-            if (kv.length != 2) continue;
-            String key = kv[0].trim();
-            String rawVal = kv[1].trim();
+            String expr = p.trim();
+            String operator = null;
+            String key = null;
+            String rawVal = null;
+            // check for multi-char operators first
+            String[] ops = {"!=", ">=", "<=", ">", "<", "=", "=="};
+            for (String op : ops) {
+                int pos = expr.indexOf(op);
+                if (pos > 0) {
+                    operator = op.equals("==") ? "=" : op;
+                    key = expr.substring(0, pos).trim();
+                    rawVal = expr.substring(pos + op.length()).trim();
+                    break;
+                }
+            }
+            if (operator == null || key == null || rawVal == null) continue;
             boolean quoted = false;
             if ((rawVal.startsWith("'") && rawVal.endsWith("'")) || (rawVal.startsWith("\"") && rawVal.endsWith("\""))) {
                 rawVal = rawVal.substring(1, rawVal.length() - 1);
                 quoted = true;
             }
             Object parsed = parseTypedValue(rawVal, quoted);
-            out.add(new Condition(key, parsed));
+            out.add(new Condition(key, operator, parsed));
         }
         return out;
     }
@@ -171,7 +237,8 @@ public class EnhancedPathResolver {
 
     private static class Condition {
         final String key;
+        final String operator;
         final Object expected;
-        Condition(String k, Object expected) { this.key = k; this.expected = expected; }
+        Condition(String k, String operator, Object expected) { this.key = k; this.operator = operator; this.expected = expected; }
     }
 }
