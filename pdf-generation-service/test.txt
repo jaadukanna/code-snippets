@@ -1,0 +1,14 @@
+curl -v -X POST http://localhost:8081/generate \
+  -H "Content-Type: application/json" \
+  -o invoice2.pdf \
+  -d '{
+    "templateName":"invoice-v1",
+    "clientService":"order-service",
+    "payload": {
+      "customer": { "name": "Acme Corp" },
+      "total": 123.45,
+      "invoiceId": "INV-1002",
+      "note":"noting"
+    },
+    "mappingOverride": "pdf.field.customerName: payload.customer.name\npdf.field.total: payload.note"
+  }'

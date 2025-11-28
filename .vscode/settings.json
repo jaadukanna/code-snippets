@@ -1,0 +1,7 @@
+{
+    "java.project.sourcePaths": [
+        "config-server"
+    ],
+    "java.compile.nullAnalysis.mode": "disabled",
+    "java.configuration.updateBuildConfiguration": "automatic"
+}

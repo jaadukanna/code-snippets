@@ -1,0 +1,6 @@
+server:
+  port: 8081
+
+# Config Server base (used by MappingService)
+config-server:
+  url: http://localhost:8888
