@@ -1,0 +1,10 @@
+template:
+  type: fillable
+
+mapping:
+  pdf:
+    field:
+      issuedDate: invoiceDate
+
+metadata:
+  source: base

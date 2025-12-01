@@ -1,0 +1,7 @@
+mapping:
+  pdf:
+    field:
+      medicareSpecificField: product.medicareField
+
+metadata:
+  source: product-template-override

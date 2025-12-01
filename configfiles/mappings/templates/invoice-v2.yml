@@ -1,0 +1,13 @@
+template:
+  url: https://example.com/templates/invoice-v2.pdf
+  type: fillable
+
+mapping:
+  pdf:
+    field:
+      invoiceNumber: invoiceId
+      customerName: customer.name
+      totalAmount: total
+
+metadata:
+  source: template

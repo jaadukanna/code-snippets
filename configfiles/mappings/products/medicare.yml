@@ -1,0 +1,8 @@
+mapping:
+  pdf:
+    field:
+      planName: product.planName
+      beneficiaryId: applicant.beneficiaryId
+
+metadata:
+  product: medicare

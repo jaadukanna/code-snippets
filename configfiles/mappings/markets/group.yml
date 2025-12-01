@@ -1,0 +1,7 @@
+mapping:
+  pdf:
+    field:
+      employerName: group.employer.name
+
+metadata:
+  market: group
