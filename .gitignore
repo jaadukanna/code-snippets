@@ -1,0 +1,32 @@
+.idea/
+.vscode/
+*.iml
+
+# Maven / build
+target/
+**/target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Logs and temp
+*.log
+logs/
+tmp/
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated outputs
+*.pdf
+generated_*.pdf
+
+# IDE folders
+out/
+
+# Misc
+node_modules/
+.env
