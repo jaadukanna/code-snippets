@@ -2,10 +2,10 @@ package com.example.pdf.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import org.springframework.http.ResponseEntity;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestTemplate;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,52 +14,49 @@ import java.util.Map;
 @Service
 public class MappingService {
 
-    private final RestTemplate rest;
+    private static final Logger log = LoggerFactory.getLogger(MappingService.class);
+
+    private final ConfigServerClient configClient;
     private final ObjectMapper yaml = new ObjectMapper(new YAMLFactory());
     private final ObjectMapper json = new ObjectMapper();
 
     public MappingService() {
-        this.rest = new RestTemplate();
+        this.configClient = new ConfigServerClient(null, "http://localhost:8888");
     }
 
     // Constructor for tests or custom RestTemplate
-    public MappingService(RestTemplate rest) {
-        this.rest = rest == null ? new RestTemplate() : rest;
+    public MappingService(org.springframework.web.client.RestTemplate rest) {
+        this.configClient = new ConfigServerClient(rest, "http://localhost:8888");
+    }
+
+    // Constructor to inject custom client
+    public MappingService(ConfigServerClient client) {
+        this.configClient = client == null ? new ConfigServerClient(null, "http://localhost:8888") : client;
     }
 
     // Resolve mapping either from override YAML or from Config Server
     public Map<String, String> resolveMapping(com.example.pdf.controller.GenerateRequest req) throws Exception {
-        System.out.println("Resolving mapping for clientService='" + req.getClientService() +
-                "', templateName='" + req.getTemplateName() +
-                "', label='" + req.getLabel() + "'");
+        log.debug("Resolving mapping for clientService='{}', templateName='{}', label='{}'", req.getClientService(), req.getTemplateName(), req.getLabel());
         if (StringUtils.hasText(req.getMappingOverride())) {
-            System.out.println("Using mapping override YAML:\n" + req.getMappingOverride());
-            // parse YAML override into a simple map
+            log.debug("Using mapping override YAML:\n{}", req.getMappingOverride());
             Map<?,?> parsed = yaml.readValue(req.getMappingOverride(), Map.class);
             return flattenToStringMap(parsed);
         }
 
         String label = StringUtils.hasText(req.getLabel()) ? req.getLabel() : "main";
-        System.out.println("Fetching mapping from Config Server with label='" + label + "'");   
-        // mapping name convention: {clientService}-{templateName}
+        log.debug("Fetching mapping from Config Server with label='{}'", label);
         String mappingName = req.getClientService() + "-" + req.getTemplateName();
-        System.out.println("Mapping name: " + mappingName);
-        String url = String.format("http://localhost:8888/%s/default/%s", mappingName, label);
-        System.out.println("Config Server URL: " + url);
-        ResponseEntity<Map> resp = rest.getForEntity(url, Map.class);
-        Map body = resp.getBody();
-        System.out.println("Config Server response body: " + yaml.writeValueAsString(body));    
-        if (body == null) {
-            System.out.println("Empty response body from Config Server");   
+        log.debug("Mapping name: {}", mappingName);
+        ConfigServerClient.ConfigServerResponse resp = configClient.getApplicationConfig(mappingName, "default", label);
+        if (resp == null) {
+            log.debug("Config server returned null for application {}", mappingName);
             return Map.of();
         }
-
-        List propertySources = (List) body.get("propertySources");
+        List<ConfigServerClient.PropertySource> propertySources = resp.propertySources;
         if (propertySources == null || propertySources.isEmpty()) return Map.of();
-        Map first = (Map) propertySources.get(0);
-        Map source = (Map) first.get("source");
+        Map<String, Object> source = propertySources.get(0).source;
         if (source == null) return Map.of();
-        // source may be flattened like {"pdf.field.customerName":"payload.customer.name"}
+
         Map<String, String> result = new LinkedHashMap<>();
         for (Object k : source.keySet()) {
             Object v = source.get(k);
@@ -69,64 +66,53 @@ public class MappingService {
     }
     
     public com.example.pdf.model.MappingDocument resolveMappingDocument(com.example.pdf.controller.GenerateRequest req) throws Exception {
-        // If inline override YAML is provided, parse into a Map then reuse unflatten+wrap logic
         if (StringUtils.hasText(req.getMappingOverride())) {
-            // parse YAML override into a Map (may contain dotted keys)
             Map<?,?> parsed = yaml.readValue(req.getMappingOverride(), Map.class);
             Map<String, Object> nested = unflatten(parsed);
-            System.out.println("Unflattened inline mapping override:\n" + yaml.writeValueAsString(nested));
+            log.debug("Unflattened inline mapping override:\n{}", yaml.writeValueAsString(nested));
             if (nested.containsKey("pdf") && !nested.containsKey("mapping")) {
                 Object pdfNode = nested.remove("pdf");
                 Map<String, Object> mappingNode = new LinkedHashMap<>();
                 mappingNode.put("pdf", pdfNode);
                 nested.put("mapping", mappingNode);
-                System.out.println("Wrapped root 'pdf' under 'mapping' for inline override\n" + yaml.writeValueAsString(nested));
+                log.debug("Wrapped root 'pdf' under 'mapping' for inline override\n{}", yaml.writeValueAsString(nested));
             }
             return json.convertValue(nested, com.example.pdf.model.MappingDocument.class);
         }
         
         String label = StringUtils.hasText(req.getLabel()) ? req.getLabel() : "main";
-        System.out.println("Fetching mapping document from Config Server with label='" + label + "'");
-        // mapping name convention: {clientService}-{templateName}
+        log.debug("Fetching mapping document from Config Server with label='{}'", label);
         String mappingName = req.getClientService() + "-" + req.getTemplateName();
-        System.out.println("Mapping name: " + mappingName);
-        String url = String.format("http://localhost:8888/%s/default/%s", mappingName, label);
-        System.out.println("Config Server URL: " + url);
-        ResponseEntity<Map> resp = rest.getForEntity(url, Map.class);
-        Map body = resp.getBody();
-        if (body == null) {
-            System.out.println("Empty response body from Config Server");
+        log.debug("Mapping name: {}", mappingName);
+        ConfigServerClient.ConfigServerResponse resp = configClient.getApplicationConfig(mappingName, "default", label);
+        if (resp == null) {
+            log.debug("Empty response body from Config Server");
             return new com.example.pdf.model.MappingDocument();
         }
-        
-        List propertySources = (List) body.get("propertySources");
+
+        List<ConfigServerClient.PropertySource> propertySources = resp.propertySources;
         if (propertySources == null || propertySources.isEmpty()) {
-            System.out.println("No propertySources found in Config Server response");   
+            log.debug("No propertySources found in Config Server response");
             return new com.example.pdf.model.MappingDocument();
         }
 
-        Map first = (Map) propertySources.get(0);
-        Map source = (Map) first.get("source");
+        Map<String, Object> source = propertySources.get(0).source;
         if (source == null) {
-            System.out.println("No source found in first propertySource");
+            log.debug("No source found in first propertySource");
             return new com.example.pdf.model.MappingDocument();
         }
-        // source may be flattened (dotted keys). Unflatten into nested map first
-        Map<String, Object> nested = unflatten(source);
-        System.out.println("Unflattened mapping document:\n" + yaml.writeValueAsString(nested));
 
-        // Some mappings are stored as flattened keys starting with `pdf.field...` which
-        // unflatten into a root `pdf` node. Our typed model expects `mapping.pdf`.
-        // If we see `pdf` at the root, but no `mapping` node, wrap it under `mapping`.
+        Map<String, Object> nested = unflatten(source);
+        log.debug("Unflattened mapping document:\n{}", yaml.writeValueAsString(nested));
+
         if (nested.containsKey("pdf") && !nested.containsKey("mapping")) {
             Object pdfNode = nested.remove("pdf");
             Map<String, Object> mappingNode = new LinkedHashMap<>();
             mappingNode.put("pdf", pdfNode);
             nested.put("mapping", mappingNode);
-            System.out.println("Wrapped root 'pdf' under 'mapping' for compatibility\n" + yaml.writeValueAsString(nested));
+            log.debug("Wrapped root 'pdf' under 'mapping' for compatibility\n{}", yaml.writeValueAsString(nested));
         }
 
-        // convert nested map into MappingDocument
         return json.convertValue(nested, com.example.pdf.model.MappingDocument.class);
     }
 
@@ -136,7 +122,6 @@ public class MappingService {
      * to most-specific; later maps override earlier ones.
      */
     public com.example.pdf.model.MappingDocument composeMappingDocument(com.example.pdf.controller.GenerateRequest req) throws Exception {
-        // If inline override exists, reuse resolveMappingDocument which already handles it
         if (StringUtils.hasText(req.getMappingOverride())) {
             return resolveMappingDocument(req);
         }
@@ -148,53 +133,17 @@ public class MappingService {
         String market = req.getMarketCategory();
         String state = req.getState();
 
-        // Candidate names in order (least-specific -> most-specific)
-        String[] candidates = new String[] {
+        List<String> candidates = List.of(
                 "mappings/base-application",
                 String.format("mappings/templates/%s", template),
                 String.format("mappings/products/%s", product),
                 String.format("mappings/markets/%s", market),
                 String.format("mappings/states/%s", state),
                 String.format("mappings/templates/%s/%s", product, template)
-        };
+        );
 
-        Map<String, Object> merged = new LinkedHashMap<>();
-        for (String name : candidates) {
-            try {
-                // If the candidate contains subdirectories (clean URLs), fetch the raw file
-                // from the config-repo using the Config Server file endpoint:
-                // GET /{application}/{profile}/{label}/{path}
-                // We use application name `application` and provide the path to the file in the repo.
-                String url;
-                if (name.contains("/")) {
-                    // e.g. http://localhost:8888/application/default/main/mappings/base-application.yml
-                    url = String.format("http://localhost:8888/application/default/%s/%s.yml", label, name);
-                } else {
-                    // fallback: request by application name
-                    url = String.format("http://localhost:8888/%s/default/%s", name, label);
-                }
-                ResponseEntity<Map> resp = rest.getForEntity(url, Map.class);
-                Map body = resp.getBody();
-                if (body == null) continue;
-                List propertySources = (List) body.get("propertySources");
-                if (propertySources == null || propertySources.isEmpty()) continue;
-                Map first = (Map) propertySources.get(0);
-                Map source = (Map) first.get("source");
-                if (source == null) continue;
-                Map<String, Object> nested = unflatten(source);
-                // wrap pdf -> mapping if needed
-                if (nested.containsKey("pdf") && !nested.containsKey("mapping")) {
-                    Object pdfNode = nested.remove("pdf");
-                    Map<String, Object> mappingNode = new LinkedHashMap<>();
-                    mappingNode.put("pdf", pdfNode);
-                    nested.put("mapping", mappingNode);
-                }
-                deepMerge(merged, nested);
-            } catch (Exception ex) {
-                // ignore missing or parse errors for candidates
-            }
-        }
-
+        MappingComposer composer = new MappingComposer(configClient);
+        Map<String, Object> merged = composer.compose(req, label, candidates);
         return json.convertValue(merged, com.example.pdf.model.MappingDocument.class);
     }
 
@@ -214,7 +163,7 @@ public class MappingService {
 
     // Resolve a dotted path into the payload map
     public Object resolvePath(Map<String, Object> payload, String path) {
-        System.out.println("resolvePath:Resolving path '" + path + "' in payload");
+        log.debug("resolvePath:Resolving path '{}' in payload", path);
         if (path == null) return null;
         String[] parts = path.split("\\.");
         Object cur = payload;
@@ -223,7 +172,7 @@ public class MappingService {
             Map m = (Map) cur;
             cur = m.get(p);
         }
-        System.out.println("resolvePath: Resolved value: " + (cur == null ? "null" : cur.toString()));
+        log.debug("resolvePath: Resolved value: {}", (cur == null ? "null" : cur.toString()));
         return cur;
     }
 

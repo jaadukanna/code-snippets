@@ -9,6 +9,5 @@ curl -v -X POST http://localhost:8081/generate \
       "total": 123.45,
       "invoiceId": "INV-1002",
       "note":"noting"
-    },
-    "mappingOverride": "pdf.field.customerName: payload.customer.name\npdf.field.total: payload.note"
+    }
   }'

@@ -1,0 +1,12 @@
+{
+  "templateName": "invoice-v2",
+  "clientService": "order-service",
+  "label": "main",
+  "productType": "medicare",
+  "marketCategory": "group",
+  "state": "CA",
+  "payload": {
+    "customer": {"name": "Alice"},
+    "order": {"id": "123", "total": "45.67"}
+  }
+}

@@ -1,0 +1,11 @@
+/workspaces/code-snippets/pdf-generation-service/src/main/java/com/example/pdf/PdfGenerationApplication.java
+/workspaces/code-snippets/pdf-generation-service/src/main/java/com/example/pdf/controller/GenerateController.java
+/workspaces/code-snippets/pdf-generation-service/src/main/java/com/example/pdf/controller/GenerateRequest.java
+/workspaces/code-snippets/pdf-generation-service/src/main/java/com/example/pdf/model/MappingDocument.java
+/workspaces/code-snippets/pdf-generation-service/src/main/java/com/example/pdf/service/ApplicationMappingSource.java
+/workspaces/code-snippets/pdf-generation-service/src/main/java/com/example/pdf/service/ConfigFileMappingSource.java
+/workspaces/code-snippets/pdf-generation-service/src/main/java/com/example/pdf/service/ConfigServerClient.java
+/workspaces/code-snippets/pdf-generation-service/src/main/java/com/example/pdf/service/InlineOverrideMappingSource.java
+/workspaces/code-snippets/pdf-generation-service/src/main/java/com/example/pdf/service/MappingComposer.java
+/workspaces/code-snippets/pdf-generation-service/src/main/java/com/example/pdf/service/MappingService.java
+/workspaces/code-snippets/pdf-generation-service/src/main/java/com/example/pdf/service/MappingSource.java
