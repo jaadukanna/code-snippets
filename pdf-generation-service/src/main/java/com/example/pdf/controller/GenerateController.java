@@ -35,7 +35,7 @@ public class GenerateController {
     public ResponseEntity<ByteArrayResource> generate(@Valid @RequestBody GenerateRequest req) throws Exception {
         System.out.println("Received generate request: " + mapper.writeValueAsString(req));
         // Resolve mapping document: either override or fetch from config server
-        com.example.pdf.model.MappingDocument doc = mappingService.resolveMappingDocument(req);
+        com.example.pdf.model.MappingDocument doc = mappingService.composeMappingDocument(req);
 
         System.out.println("Resolved mapping document: " + mapper.writeValueAsString(doc));
 
@@ -51,7 +51,8 @@ public class GenerateController {
             String pdfField = e.getKey();
             String payloadPath = e.getValue();
             System.out.println("Mapping PDF field '" + pdfField + "' to payload path '" + payloadPath + "'");
-            Object value = mappingService.resolvePath(payload, payloadPath);
+            Object value = mappingService.
+            resolvePath(payload, payloadPath);
             System.out.println("  Resolved value: " + (value == null ? "null" : mapper.writeValueAsString(value)));
             resolved.put(pdfField, value == null ? "" : value);
         }

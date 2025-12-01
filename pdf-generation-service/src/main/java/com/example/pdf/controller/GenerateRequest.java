@@ -17,6 +17,10 @@ public class GenerateRequest {
     private String mappingOverride;
 
     private String label;
+    // optional hierarchical resolution attributes
+    private String productType;
+    private String marketCategory;
+    private String state;
 
     public String getTemplateName() {
         return templateName;
@@ -56,5 +60,29 @@ public class GenerateRequest {
 
     public void setLabel(String label) {
         this.label = label;
+    }
+
+    public String getProductType() {
+        return productType;
+    }
+
+    public void setProductType(String productType) {
+        this.productType = productType;
+    }
+
+    public String getMarketCategory() {
+        return marketCategory;
+    }
+
+    public void setMarketCategory(String marketCategory) {
+        this.marketCategory = marketCategory;
+    }
+
+    public String getState() {
+        return state;
+    }
+
+    public void setState(String state) {
+        this.state = state;
     }
 }

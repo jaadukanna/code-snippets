@@ -14,9 +14,18 @@ import java.util.Map;
 @Service
 public class MappingService {
 
-    private final RestTemplate rest = new RestTemplate();
+    private final RestTemplate rest;
     private final ObjectMapper yaml = new ObjectMapper(new YAMLFactory());
     private final ObjectMapper json = new ObjectMapper();
+
+    public MappingService() {
+        this.rest = new RestTemplate();
+    }
+
+    // Constructor for tests or custom RestTemplate
+    public MappingService(RestTemplate rest) {
+        this.rest = rest == null ? new RestTemplate() : rest;
+    }
 
     // Resolve mapping either from override YAML or from Config Server
     public Map<String, String> resolveMapping(com.example.pdf.controller.GenerateRequest req) throws Exception {
@@ -119,6 +128,88 @@ public class MappingService {
 
         // convert nested map into MappingDocument
         return json.convertValue(nested, com.example.pdf.model.MappingDocument.class);
+    }
+
+    /**
+     * Compose mapping documents from multiple candidate sources based on the supplied attributes
+     * (productType, marketCategory, state, templateName). The order is from least-specific
+     * to most-specific; later maps override earlier ones.
+     */
+    public com.example.pdf.model.MappingDocument composeMappingDocument(com.example.pdf.controller.GenerateRequest req) throws Exception {
+        // If inline override exists, reuse resolveMappingDocument which already handles it
+        if (StringUtils.hasText(req.getMappingOverride())) {
+            return resolveMappingDocument(req);
+        }
+
+        String label = StringUtils.hasText(req.getLabel()) ? req.getLabel() : "main";
+
+        String template = req.getTemplateName();
+        String product = req.getProductType();
+        String market = req.getMarketCategory();
+        String state = req.getState();
+
+        // Candidate names in order (least-specific -> most-specific)
+        String[] candidates = new String[] {
+                "mappings/base-application",
+                String.format("mappings/templates/%s", template),
+                String.format("mappings/products/%s", product),
+                String.format("mappings/markets/%s", market),
+                String.format("mappings/states/%s", state),
+                String.format("mappings/templates/%s/%s", product, template)
+        };
+
+        Map<String, Object> merged = new LinkedHashMap<>();
+        for (String name : candidates) {
+            try {
+                // If the candidate contains subdirectories (clean URLs), fetch the raw file
+                // from the config-repo using the Config Server file endpoint:
+                // GET /{application}/{profile}/{label}/{path}
+                // We use application name `application` and provide the path to the file in the repo.
+                String url;
+                if (name.contains("/")) {
+                    // e.g. http://localhost:8888/application/default/main/mappings/base-application.yml
+                    url = String.format("http://localhost:8888/application/default/%s/%s.yml", label, name);
+                } else {
+                    // fallback: request by application name
+                    url = String.format("http://localhost:8888/%s/default/%s", name, label);
+                }
+                ResponseEntity<Map> resp = rest.getForEntity(url, Map.class);
+                Map body = resp.getBody();
+                if (body == null) continue;
+                List propertySources = (List) body.get("propertySources");
+                if (propertySources == null || propertySources.isEmpty()) continue;
+                Map first = (Map) propertySources.get(0);
+                Map source = (Map) first.get("source");
+                if (source == null) continue;
+                Map<String, Object> nested = unflatten(source);
+                // wrap pdf -> mapping if needed
+                if (nested.containsKey("pdf") && !nested.containsKey("mapping")) {
+                    Object pdfNode = nested.remove("pdf");
+                    Map<String, Object> mappingNode = new LinkedHashMap<>();
+                    mappingNode.put("pdf", pdfNode);
+                    nested.put("mapping", mappingNode);
+                }
+                deepMerge(merged, nested);
+            } catch (Exception ex) {
+                // ignore missing or parse errors for candidates
+            }
+        }
+
+        return json.convertValue(merged, com.example.pdf.model.MappingDocument.class);
+    }
+
+    // Deep-merge override into base. For Map values, merge recursively; lists are replaced.
+    @SuppressWarnings("unchecked")
+    private void deepMerge(Map<String, Object> base, Map<String, Object> override) {
+        for (Map.Entry<String, Object> e : override.entrySet()) {
+            String k = e.getKey();
+            Object v = e.getValue();
+            if (v instanceof Map && base.get(k) instanceof Map) {
+                deepMerge((Map<String, Object>) base.get(k), (Map<String, Object>) v);
+            } else {
+                base.put(k, v);
+            }
+        }
     }
 
     // Resolve a dotted path into the payload map
